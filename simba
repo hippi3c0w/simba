@@ -1,0 +1,266 @@
+#!/bin/bash
+#############################################
+#											#
+#   Simba is a script that shows you the    #
+#   info needed about the server that you   #
+#   shoulb be monitoring                    #
+#											#
+#   Made by: Manu Alén-@hippi3c0w           #
+#   manualen@protonmail.com                 #
+#   Version: 1.0                            #
+#############################################
+
+
+##Banner
+
+##Style
+cat /var/partera/pretty/simba/style
+echo " "
+echo "
+==================================
+Made by: Manu Alén-@hippi3c0w
+manualen@protonmail.com
+Version: 1.0
+=================================="
+echo " "
+#####################
+#    Color Vars     #
+#####################
+BLACK='\033[0;30m'
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+ORANGE='\033[0;33m'
+PURPLE='\033[0;34m'
+CYAN='\033[0;35m'
+LIGHTGRAY='\033[0;36m'
+NC='\033[0m'
+DARKGRAY='\033[1;30m'
+LIGHTRED='\033[1;31m'
+LIGHTGREEN='\033[1;32m'
+LIGHTORANGE='\033[1;33m'
+LIGHTPURPLE='\033[1;34m'
+LIGHTCYAN='\033[1;35m'
+
+
+#####################
+#        VARS	    #
+#####################
+homeDirs=`cat /etc/passwd | awk -F ":" '{print $6}' | grep "/home"`
+banned=`tail  /var/log/fail2ban.log | awk '{print $7 " " $8 " " $9}' | grep -i ^"ban" | grep -vi "banned"`
+unbanned=`tail  /var/log/fail2ban.log | awk '{print $7 " " $8 " " $9}' | grep -i ^"unban" | grep -vi "banned"`
+longR=`echo "scale=2; $(top -b -n1 | grep "R" | wc -l) -1" |bc`
+longS=`echo "scale=2; $(top -b -n1 | grep "S" | wc -l) -1" |bc`
+longZ=`echo "scale=2; $(top -b -n1 | grep "Z" | wc -l) -1" |bc`
+#####################
+#     Functions     #
+#####################
+
+function usage(){
+	echo "-s: Shows you info about a service. You must specify the service name"
+	echo "    Example: simba -s apache2"
+	echo "-f: Shows you info about the files created or modified in each home directory. You can specify whatever you want"
+	echo "    Example: simba -f home"
+	echo "-b: Shows you info about banned IPs via Fail2ban service (you must have installed and configure it). You must choos 'ban' or 'unban'"
+	echo "    Examples:
+	                    simba -b ban
+	                    simba -b unban"
+	echo "-u: Shows you info about unwanted SUID or SGID binaries. You can specify whatever."
+	echo "    Example: simba -u suid"
+	echo "-h: Shows you info about how to use simba software"
+	echo "    Example: simba -h help"
+	echo "-t: Shows you info about top command. You must specify top status (running, sleeping, zombie or all)."
+	echo "    Examples:
+	                    simba -t running
+	                    simba -t sleeping
+	                    simba -t zombie
+	                    simba -t all"
+	echo " "
+	echo "Another examples"
+	echo "=========================================="
+	echo " "
+	echo "simba -s apache2 -f home -b ban"
+	echo "simba -b unban -t running -u suid -s apache2"
+
+}
+
+function singularR(){
+	echo "There is $longR running proccess in the system:"
+	echo " "
+	sleep 2
+	top -b -n1 -c | grep "R" | tail -n$longR
+}
+
+function singularS(){
+	echo "There is $longS sleeping proccess in the system:"
+	echo " "
+	sleep 2
+	top -b -n1 -c | grep "S" | grep -v "MiB Swap"| tail -n$longS
+}
+
+function singularZ(){
+	echo "There is $longZ zombie proccess in the system:"
+	echo " "
+	sleep 2
+	top -b -n1 -c | grep "R" | tail -n$longZ
+
+}
+
+function pluralR(){
+	echo "There are $longR running processes in the system"
+	echo " "
+	sleep 2
+	top -b -n1 -c | grep "R" | tail -n$longR
+
+}
+
+function pluralS(){
+	echo "There are $longS sleeping processes in the system"
+	echo " "
+	sleep 2
+	top -b -n1 -c | grep "S" | grep -v "MiB Swap"| grep -v "%CPU"| tail -n$longS
+
+}
+
+function pluralZ(){
+	echo "There are $longZ zombie processes in the system"
+	echo " "
+	sllep 2
+	top -b -n1 -c | grep "Z" | tail -n$longZ
+
+}
+
+#ss -o state established '( dport = :http or sport = :https )' | awk '{print $4}' | egrep -vi "(netid|recv-q|send-q|local|peer)"
+
+#####################
+#     Code Logic    #
+#####################
+while getopts ":s:f:b:u:t:h:" opt; do
+  case $opt in
+
+  	s)
+		servicePID=`cat /var/run/${OPTARG}/${OPTARG}.pid`
+		serviceStatus=`/etc/init.d/${OPTARG} status | grep -i "active" | tr -s " " | cut -d ":" -f2 | cut -d " " -f2`
+		echo "Current state of service ${OPTARG} "
+		echo "==================================================="
+		echo " "
+		sleep 2
+		if [[ $serviceStatus=="active" ]];then
+			echo -e "Service ${OPTARG} is ${GREEN}active${NC} and is ${GREEN}running${NC} with PID:  ${GREEN} $servicePID ${NC}"
+			sleep 2
+		else
+			echo -e "Service ${OPTARG} is ${RED}inactive${NC}. Service ${OPT} is not running"
+			sleep 2
+		fi
+		;;
+	f)
+		echo "Files that were modified or created less than 3 days ago"
+		echo "==============================================================="
+		echo " "
+		echo $homeDirs>/tmp/homeDirs.txt
+		for home in $(cat /tmp/homeDirs.txt)
+		do
+			sleep 2
+			echo " "
+			echo "--- HOME DIR: $home ---"
+			sleep 1
+			cd $home && tree -aicfCF --timefmt %Y%j-%d-%b-%y|grep $(date +%Y%j)'\|'$[$(date +%Y%j)-1]'\|'$[$(date +%Y%j)-2]
+			sleep 2
+			
+		done
+		;;
+	b)
+		OPTION="${OPTARG}"
+
+		case $OPTION in 
+			"ban")
+				echo "IP(s) which have been banned"
+				echo "==========================================="
+				sleep 2
+				echo $banned
+				sleep 2
+				;;
+			"unban")
+				echo "IP(s) which have been unbanned"
+				echo "==========================================="
+				sleep 2
+				echo $unbanned
+				sleep 2
+				;;
+			*)
+				echo "Incorrect sub-option. Please use 'ban' or 'unban' to use -b option"
+				usage
+				;;
+			esac
+			
+		;;
+	u)
+		suidBinaries=`find / \( -perm -4000 -o -perm -2000 \) -print`
+		echo "Looking for unwanted SUID or SGID binaries"
+		echo "====================================================="
+		sleep 3
+		echo "$suidBinaries"
+		sleep 2
+		;;
+	h) 
+		usage
+		;;
+
+	t)  
+		toption=${OPTARG}
+		#echo $longR
+		#echo $longS
+		#echo $longZ
+		case $toption in
+			"running")
+						countRunning=`top -b -n1 | grep "R" | wc -l`
+						if [[ $longR -gt 1 ]];then
+							sleep 2
+							pluralR
+						else
+							sleep 2
+							singularR
+						fi
+						;;
+			"sleeping")
+						countSleeping=`top -b -n1 | grep "S" | wc -l`
+						if [[ $longS -gt 1 ]];then
+							sleep 2
+							pluralS
+						else
+							sleep 2
+							singularS
+						fi
+						;;
+			"zombie")
+						countZOmbie=`top -b -n1 | grep "Z" | wc -l`
+						if [[ $longZ -gt 1 ]];then
+							sleep 2
+							pluralZ
+						else
+							sleep 2
+							singularZ
+						fi
+						;;
+			"all")
+						top -b -n1
+						;;
+			*)
+						echo -e "[${RED}!${NC}] Invalid sub-option. Please choose a valid one"
+						usage
+						;;
+			esac
+			;;
+
+	\?)
+		echo -e "[${RED}!${NC}] Invalid option, please choose a valid one"
+		sleep 2
+		usage
+		;;
+	:)
+		echo -e "[${GREEN}?${NC}] Hey, this program requires (at least) one option"
+		sleep 2
+		usage
+		;;
+	esac
+  done
+  exit 0
